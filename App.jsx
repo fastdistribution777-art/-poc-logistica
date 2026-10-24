@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import DeckGL from '@deck.gl/react'
 import { ScatterplotLayer } from '@deck.gl/layers'
 import { HeatmapLayer } from '@deck.gl/aggregation-layers'
@@ -38,6 +38,9 @@ export default function App() {
   const [error, setError] = useState(null)
   const [estado, setEstado] = useState('Todos')
   const [vista, setVista] = useState('puntos') // 'puntos' | 'calor'
+  const [hover, setHover] = useState(null) // { x, y, obj } al pasar el mouse
+  const [seleccion, setSeleccion] = useState(null) // punto elegido con clic
+  const mapaRef = useRef(null)
 
   // Etapa 4: consultar la tabla "puntos" en Supabase
   useEffect(() => {
@@ -79,11 +82,13 @@ export default function App() {
         data: visibles,
         getPosition: (p) => [p.lng, p.lat],
         getFillColor: (p) => [...(COLORES[p.categoria] || [120, 120, 120]), 215],
-        getLineColor: [255, 255, 255, 255],
+        getLineColor: (p) => (seleccion && p.id === seleccion.id ? [20, 33, 61, 255] : [255, 255, 255, 255]),
+        getLineWidth: (p) => (seleccion && p.id === seleccion.id ? 4 : 1.5),
         getRadius: (p) => 5 + p.valor / 9, // más demora = punto más grande
         radiusUnits: 'pixels',
+        lineWidthUnits: 'pixels',
         stroked: true,
-        lineWidthMinPixels: 1.5,
+        updateTriggers: { getLineColor: [seleccion], getLineWidth: [seleccion] },
         pickable: true,
         autoHighlight: true,
         highlightColor: [20, 33, 61, 120],
@@ -100,19 +105,13 @@ export default function App() {
       }),
   ].filter(Boolean)
 
-  // Etapa 6: información al pasar el mouse
-  const getTooltip = ({ object }) =>
-    object && {
-      html: `
-        <div class="tt">
-          <strong>${object.nombre}</strong>
-          <div>${object.descripcion ?? ''}</div>
-          <div><span>Dirección:</span> ${object.direccion ?? '-'}</div>
-          <div><span>Categoría:</span> ${object.categoria}</div>
-          <div><span>Valor:</span> ${object.valor} min</div>
-        </div>`,
-      style: { background: 'transparent', padding: 0 },
-    }
+  // Etapa 6: información al pasar el mouse (tooltip propio) y al hacer clic (panel)
+  const alPasarMouse = (info) => {
+    setHover(info && info.object ? { x: info.x, y: info.y, obj: info.object } : null)
+  }
+  const alHacerClic = (info) => {
+    setSeleccion(info && info.object ? info.object : null)
+  }
 
   return (
     <div className="app">
@@ -138,12 +137,14 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mapa">
+      <main className="mapa" ref={mapaRef}>
         <DeckGL
           initialViewState={VISTA_INICIAL}
           controller={true}
           layers={layers}
-          getTooltip={getTooltip}
+          onHover={alPasarMouse}
+          onClick={alHacerClic}
+          getCursor={({ isHovering }) => (isHovering ? 'pointer' : 'grab')}
         >
           <Map mapStyle={MAP_STYLE} />
         </DeckGL>
@@ -178,6 +179,40 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {hover && vista === 'puntos' && (
+          <div
+            className="tt"
+            style={{
+              left:
+                hover.x > (mapaRef.current?.clientWidth || 1000) - 290
+                  ? hover.x - 270
+                  : hover.x + 14,
+              top: hover.y + 14,
+            }}
+          >
+            <strong>{hover.obj.nombre}</strong>
+            <div>{hover.obj.descripcion}</div>
+            <div><span>Dirección:</span> {hover.obj.direccion}</div>
+            <div><span>Categoría:</span> {hover.obj.categoria}</div>
+            <div><span>Valor:</span> {hover.obj.valor} min</div>
+          </div>
+        )}
+
+        {seleccion && (
+          <aside className="detalle">
+            <button className="cerrar" onClick={() => setSeleccion(null)} aria-label="Cerrar">×</button>
+            <h2>{seleccion.nombre}</h2>
+            <p>{seleccion.descripcion}</p>
+            <dl>
+              <dt>Dirección</dt><dd>{seleccion.direccion}</dd>
+              <dt>Zona</dt><dd>{seleccion.zona}</dd>
+              <dt>Categoría</dt><dd>{seleccion.categoria}</dd>
+              <dt>Valor</dt><dd>{seleccion.valor} min</dd>
+              <dt>Fecha</dt><dd>{seleccion.fecha}</dd>
+            </dl>
+          </aside>
+        )}
 
         {cargando && <div className="aviso">Cargando pedidos…</div>}
         {error && (
