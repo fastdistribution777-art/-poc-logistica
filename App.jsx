@@ -26,12 +26,6 @@ const COLORES = {
 }
 const ESTADOS = ['Entregado', 'En camino', 'Pendiente']
 
-// "-34.6037,-58.3816"  ->  { lat: -34.6037, lng: -58.3816 }
-function parseCoordenadas(texto) {
-  const [lat, lng] = String(texto).split(',').map((n) => Number(n.trim()))
-  return { lat, lng }
-}
-
 export default function App() {
   const [puntos, setPuntos] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -47,7 +41,7 @@ export default function App() {
     async function cargar() {
       const { data, error } = await supabase
         .from('puntos')
-        .select('id, nombre, direccion, zona, coordenadas, categoria, valor, fecha, descripcion')
+        .select('id, nombre, direccion, zona, latitud, longitud, categoria, valor, fecha, descripcion')
 
       console.log('Respuesta de Supabase:', data, error) // para comprobar que llegan los datos
 
@@ -55,7 +49,7 @@ export default function App() {
         setError(error.message)
       } else {
         const limpios = data
-          .map((p) => ({ ...p, ...parseCoordenadas(p.coordenadas), valor: Number(p.valor) }))
+          .map((p) => ({ ...p, lat: Number(p.latitud), lng: Number(p.longitud), valor: Number(p.valor) }))
           .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         setPuntos(limpios)
       }
